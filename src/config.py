@@ -1,11 +1,57 @@
 """
 Configuration settings for Face Recognition service and CLI.
-Loads settings from environment variables with safe defaults.
+Loads settings from environment variables and .env file with safe defaults.
 """
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
+
+
+def load_env_file() -> None:
+    """
+    Load environment variables from .env file into os.environ if not already set.
+    Checks the project root and current working directory without external dependencies.
+    """
+    project_root = Path(__file__).resolve().parent.parent
+    candidate_paths = [
+        project_root / ".env",
+        Path.cwd() / ".env",
+    ]
+    seen_paths = set()
+    for env_path in candidate_paths:
+        try:
+            resolved = env_path.resolve()
+        except Exception:
+            resolved = env_path
+        if resolved in seen_paths:
+            continue
+        seen_paths.add(resolved)
+
+        if env_path.is_file():
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        key, val = line.split("=", 1)
+                        key = key.strip()
+                        val = val.strip()
+                        if (val.startswith('"') and val.endswith('"')) or (
+                            val.startswith("'") and val.endswith("'")
+                        ):
+                            val = val[1:-1]
+                        if key not in os.environ:
+                            os.environ[key] = val
+                break
+            except Exception:
+                pass
+
+
+# Load .env before initializing settings
+load_env_file()
 
 
 @dataclass(frozen=True)
@@ -15,9 +61,13 @@ class Settings:
     models_dir: str = os.getenv("MODELS_DIR", "models")
     models_config_file: str = os.getenv("MODELS_CONFIG_FILE", "models_config.json")
 
-    # Model Identifiers or Paths (None by default so defaults in models_config.json take precedence)
-    det_model_path: Optional[str] = os.getenv("DET_MODEL_PATH")
-    rec_model_path: Optional[str] = os.getenv("REC_MODEL_PATH")
+    # Default Models (configured via .env or environment variables)
+    det_model_path: str = os.getenv(
+        "DET_MODEL_PATH", "face_detection/scrfd_2.5g_bnkps.onnx"
+    )
+    rec_model_path: str = os.getenv(
+        "REC_MODEL_PATH", "face_recognition/arcface_r50_fp16.onnx"
+    )
 
     # Detection & Matching Thresholds
     conf_threshold: float = float(os.getenv("CONF_THRESHOLD", "0.50"))

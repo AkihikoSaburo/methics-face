@@ -75,17 +75,22 @@ class ModelManager:
         }
 
     def get_defaults(self) -> Dict[str, str]:
-        """Return the default model relative paths for detection and recognition from config."""
-        return self.config_data.get("defaults", {})
+        """Return the default model relative paths for detection and recognition."""
+        config_defaults = self.config_data.get("defaults", {})
+        det = os.getenv("DET_MODEL_PATH") or config_defaults.get("face_detection", "face_detection/scrfd_2.5g_bnkps.onnx")
+        rec = os.getenv("REC_MODEL_PATH") or config_defaults.get("face_recognition", "face_recognition/arcface_r50_fp16.onnx")
+        return {
+            "face_detection": det,
+            "face_recognition": rec,
+        }
 
     def get_default_model(self, category: str) -> str:
-        """Return default model path for a category ('face_detection' or 'face_recognition') from config."""
+        """Return default model path for a category ('face_detection' or 'face_recognition')."""
         defaults = self.get_defaults()
-        if category in defaults:
+        if category in defaults and defaults[category]:
             return defaults[category]
         raise ValueError(
-            f"No default model configured for category '{category}' in '{self.config_path}'. "
-            f"Please specify it in models_config.json."
+            f"No default model configured for category '{category}' in environment variables (.env) or models_config.json."
         )
 
     def list_available_models(self, refresh_remote: bool = True) -> Dict[str, Any]:
