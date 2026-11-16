@@ -29,6 +29,9 @@ class Settings:
     api_port: int = int(os.getenv("API_PORT", "8000"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
+    # Security
+    api_token: Optional[str] = os.getenv("API_TOKEN")
+
     # Image Processing Defaults
     aligned_face_size: int = int(os.getenv("ALIGNED_FACE_SIZE", "112"))
     input_tensor_size: int = int(os.getenv("INPUT_TENSOR_SIZE", "640"))

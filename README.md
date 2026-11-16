@@ -76,6 +76,20 @@ python main.py --download-model face_detection/yolo-facev2m.onnx
 
 Semua fungsi (ekstraksi embedding, registrasi mahasiswa, model management) diakses melalui REST API.
 
+### Konfigurasi Autentikasi (Bearer Token):
+API ini menggunakan autentikasi **Bearer Token** untuk mengamankan seluruh endpoint (kecuali `/health`).
+
+1. Buat token aman:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+2. Set token di environment variable atau buat file `.env` dari `.env.example`:
+   ```bash
+   cp .env.example .env
+   # Edit .env lalu atur API_TOKEN=<token_anda>
+   export API_TOKEN="<token_anda>"
+   ```
+
 ### Cara Menjalankan:
 ```bash
 # Default (host 0.0.0.0, port 8000)
@@ -91,35 +105,53 @@ python main.py --reload
 uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Dokumentasi interaktif Swagger UI tersedia di: `http://localhost:8000/docs`
+Dokumentasi interaktif Swagger UI tersedia di: `http://localhost:8000/docs` (klik tombol **Authorize** untuk memasukkan Bearer token).
 
 ### Endpoint Utama:
-| Endpoint | Method | Deskripsi |
-|---|---|---|
-| `/health` | GET | Status server dan model yang sedang aktif |
-| `/models` | GET | Melihat katalog model dari Hugging Face Hub dan status download di lokal |
-| `/models/download` | POST | Mengunduh model tertentu dari Hugging Face ke disk server |
-| `/models/switch` | POST | Mengganti model deteksi atau recognizer yang sedang aktif di RAM secara instan |
-| `/embed` | POST | Ekstraksi embedding 512-d wajah utama (untuk absensi) |
-| `/register` | POST | Pendaftaran wajah mahasiswa (enrollment 1–6 foto pose berbeda) & ekstraksi template embedding |
+| Endpoint | Method | Autentikasi | Deskripsi |
+|---|---|---|---|
+| `/health` | GET | Bebas (Public) | Status server dan model yang sedang aktif |
+| `/models` | GET | Bearer Token | Melihat katalog model dari Hugging Face Hub dan status download di lokal |
+| `/models/download` | POST | Bearer Token | Mengunduh model tertentu dari Hugging Face ke disk server |
+| `/models/switch` | POST | Bearer Token | Mengganti model deteksi atau recognizer yang sedang aktif di RAM secara instan |
+| `/embed` | POST | Bearer Token | Ekstraksi embedding 512-d wajah utama (untuk absensi) |
+| `/register` | POST | Bearer Token | Pendaftaran wajah mahasiswa (enrollment 1–6 foto pose berbeda) & ekstraksi template embedding |
 
 ---
 
 ## 5. Contoh Penggunaan API
 
+Simpan token ke variabel shell untuk kemudahan:
+```bash
+export API_TOKEN="token-rahasia-anda"
+```
+
+### Health Check (Tanpa Token):
+```bash
+curl -X GET http://localhost:8000/health
+```
+
 ### Ekstrak Embedding (Absensi):
 ```bash
 curl -X POST http://localhost:8000/embed \
+  -H "Authorization: Bearer $API_TOKEN" \
   -F "image=@foto.jpg"
 ```
 
 ### Registrasi Wajah (Enrollment Mahasiswa):
 ```bash
 curl -X POST "http://localhost:8000/register?student_id=12345678" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -F "images=@depan.jpg" \
   -F "images=@kiri.jpg" \
   -F "images=@kanan.jpg" \
   -F "images=@atas.jpg" \
   -F "images=@bawah.jpg" \
   -F "images=@senyum.jpg"
+```
+
+### Melihat Daftar Model:
+```bash
+curl -X GET http://localhost:8000/models \
+  -H "Authorization: Bearer $API_TOKEN"
 ```

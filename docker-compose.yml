@@ -10,6 +10,8 @@ services:
       # Optional model path overrides (defaults are managed in models_config.json)
       # - DET_MODEL_PATH=face_detection/scrfd_10g.onnx
       # - REC_MODEL_PATH=face_recognition/arcface_r50_fp16.onnx
+      # Security
+      - API_TOKEN=${API_TOKEN}
       # Thresholds
       - CONF_THRESHOLD=0.50
       - IOU_THRESHOLD=0.40

@@ -18,13 +18,25 @@ Endpoints:
 import time
 import base64
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, status
+from fastapi import (
+    FastAPI,
+    APIRouter,
+    Depends,
+    Security,
+    File,
+    UploadFile,
+    HTTPException,
+    Query,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +58,10 @@ async def lifespan(app: FastAPI):
         level=getattr(logging, settings.log_level, logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    if not settings.api_token:
+        logger.warning(
+            "API_TOKEN is not configured or empty. All protected endpoints will fail-closed and reject requests."
+        )
     logger.info("Initializing Face Recognition Pipeline models...")
     start_time = time.time()
     try:
@@ -75,9 +91,6 @@ app = FastAPI(
     ),
     version="1.1.0",
     lifespan=lifespan,
-    docs_url=None,
-    redoc_url=None,
-    openapi_url=None,
 )
 
 app.add_middleware(
@@ -87,6 +100,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Authentication (Bearer Token)
+# ---------------------------------------------------------------------------
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+) -> str:
+    """
+    Validate Bearer token against configured API_TOKEN using constant-time comparison.
+    Fail-closed: if API_TOKEN is not set or empty, reject all requests.
+    """
+    configured_token = settings.api_token
+    if not configured_token:
+        logger.warning(
+            "Rejected request to protected endpoint: API_TOKEN is not configured."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not credentials or not credentials.credentials or not secrets.compare_digest(
+        credentials.credentials, configured_token
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return credentials.credentials
+
+
+protected_router = APIRouter(dependencies=[Depends(verify_token)])
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +227,7 @@ async def health_check():
     )
 
 
-@app.get("/models", tags=["Model Management"])
+@protected_router.get("/models", tags=["Model Management"])
 async def list_models(refresh_remote: bool = Query(True, description="Query Hugging Face Hub live")):
     """
     List available face detection and recognition models from Hugging Face Hub.
@@ -186,7 +237,7 @@ async def list_models(refresh_remote: bool = Query(True, description="Query Hugg
     return mgr.list_available_models(refresh_remote=refresh_remote)
 
 
-@app.post("/models/download", tags=["Model Management"])
+@protected_router.post("/models/download", tags=["Model Management"])
 async def download_model(req: DownloadModelRequest):
     """
     Explicitly download a model from Hugging Face Hub to local disk.
@@ -204,7 +255,7 @@ async def download_model(req: DownloadModelRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/models/switch", tags=["Model Management"])
+@protected_router.post("/models/switch", tags=["Model Management"])
 async def switch_pipeline_models(req: SwitchModelRequest):
     """
     Dynamically reload the active detection / recognition models in memory.
@@ -238,7 +289,7 @@ async def switch_pipeline_models(req: SwitchModelRequest):
 # ---------------------------------------------------------------------------
 # Endpoints: Face Recognition & Embedding
 # ---------------------------------------------------------------------------
-@app.post("/embed", response_model=EmbedResponse, tags=["Embedding"])
+@protected_router.post("/embed", response_model=EmbedResponse, tags=["Embedding"])
 async def extract_embedding(
     image: UploadFile = File(..., description="Image file containing a face"),
     conf_threshold: Optional[float] = Query(
@@ -303,7 +354,7 @@ class RegisterResponse(BaseModel):
     )
 
 
-@app.post(
+@protected_router.post(
     "/register",
     response_model=RegisterResponse,
     tags=["Enrollment"],
@@ -391,3 +442,9 @@ async def register_student(
         templates=templates,
         processing_time_ms=round(elapsed_ms, 2),
     )
+
+
+# ---------------------------------------------------------------------------
+# Mount Routers
+# ---------------------------------------------------------------------------
+app.include_router(protected_router)
